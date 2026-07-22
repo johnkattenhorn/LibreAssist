@@ -37,23 +37,30 @@ def createBackup(fullPath, docDir):
 def restoreBackup():
     """
     Restore document from backup (Undo).
-    Called from the Undo button – getCurrentDocument() is correct here.
+    Called from the Undo button - getCurrentDocument() is correct here.
+    Handles both edited source documents and newly created documents.
     Returns: Status message string
     """
     global _undo_state
 
     try:
-        doc = getCurrentDocument()
-        if not doc:
-            return "No document open"
-
         directory, filename, fullPath = getDocumentPath()
         if not fullPath:
             return "Document not saved"
 
         docDir = getDocSettingsDir()
-        backupPath = os.path.join(docDir, "backup" + os.path.splitext(filename)[1])
+        data   = loadSettings()
 
+        # Newly created document: delete it instead of restoring the source
+        if data.get("last_action") == "create":
+            return _undoCreate(data, docDir)
+
+        # Edited source document: restore from backup (original behaviour)
+        doc = getCurrentDocument()
+        if not doc:
+            return "No document open"
+
+        backupPath = os.path.join(docDir, "backup" + os.path.splitext(filename)[1])
         if not os.path.exists(backupPath):
             return "No backup available"
 
@@ -64,7 +71,6 @@ def restoreBackup():
             frame.setName(frameName)
         url = doc.getURL()
 
-        data = loadSettings()
         data["undo_available"] = False
         data["redo_available"] = True
         saveSettings(data)
@@ -90,23 +96,29 @@ def restoreBackup():
 def restoreChanged():
     """
     Restore document from changed state (Redo).
-    Called from the Redo button – getCurrentDocument() is correct here.
+    Called from the Redo button - getCurrentDocument() is correct here.
+    Handles both edited source documents and newly created documents.
     Returns: Status message string
     """
     global _undo_state
 
     try:
-        doc = getCurrentDocument()
-        if not doc:
-            return "No document open"
-
         directory, filename, fullPath = getDocumentPath()
         if not fullPath:
             return "Document not saved"
 
         docDir = getDocSettingsDir()
-        changedPath = os.path.join(docDir, "changed" + os.path.splitext(filename)[1])
+        data   = loadSettings()
 
+        # Newly created document: re-create it from the stored copy
+        if data.get("last_action") == "create":
+            return _redoCreate(data, docDir)
+
+        doc = getCurrentDocument()
+        if not doc:
+            return "No document open"
+
+        changedPath = os.path.join(docDir, "changed" + os.path.splitext(filename)[1])
         if not os.path.exists(changedPath):
             return "No changed state available"
 
@@ -117,7 +129,6 @@ def restoreChanged():
             frame.setName(frameName)
         url = doc.getURL()
 
-        data = loadSettings()
         data["undo_available"] = True
         data["redo_available"] = False
         saveSettings(data)
@@ -138,3 +149,79 @@ def restoreChanged():
         import traceback
         traceback.print_exc()
         return f"Error restoring changes: {str(e)}"
+
+
+def _undoCreate(data, docDir):
+    """
+    Undo a document-creation action: close and delete the created files.
+    The redo copies in docDir are kept so the action can be redone.
+    """
+    global _undo_state
+
+    _closeAndDeleteFiles(data.get("created_files", []))
+
+    data["undo_available"] = False
+    data["redo_available"] = True
+    saveSettings(data)
+
+    _undo_state = "original"
+    return "Created document removed"
+
+
+def _redoCreate(data, docDir):
+    """
+    Redo a document-creation action: restore the created files from the
+    stored copies in docDir and re-open them in new windows.
+    """
+    global _undo_state
+
+    ctx = uno.getComponentContext()
+    desktop = ctx.ServiceManager.createInstance("com.sun.star.frame.Desktop")
+
+    for path in data.get("created_files", []):
+        copyPath = os.path.join(docDir, "created_" + os.path.basename(path))
+        if os.path.exists(copyPath):
+            shutil.copy2(copyPath, path)
+            desktop.loadComponentFromURL(uno.systemPathToFileUrl(path), "_blank", 0, ())
+
+    data["undo_available"] = True
+    data["redo_available"] = False
+    saveSettings(data)
+
+    _undo_state = "changed"
+    return "Created document restored"
+
+
+def _closeAndDeleteFiles(paths):
+    """
+    Close any open window showing one of the given files, then delete the file.
+    """
+    ctx = uno.getComponentContext()
+    desktop = ctx.ServiceManager.createInstance("com.sun.star.frame.Desktop")
+
+    urls = set()
+    for path in paths:
+        try:
+            urls.add(uno.systemPathToFileUrl(path))
+        except Exception:
+            pass
+
+    # Close matching windows first
+    components = desktop.getComponents().createEnumeration()
+    while components.hasMoreElements():
+        comp = components.nextElement()
+        try:
+            if comp.getURL() in urls:
+                comp.close(False)
+        except Exception:
+            pass
+
+    time.sleep(0.3)
+
+    # Delete the files
+    for path in paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            print(f"Error deleting created file {path}: {e}")

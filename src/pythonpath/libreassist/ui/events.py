@@ -129,6 +129,18 @@ class LLMCompletionCallback(unohelper.Base, XCallback):
                 lib_settings.saveHistoryForDir(docDir, newHistory)
             else:
                 lib_settings.saveHistory(newHistory)
+        
+            # Open any newly created documents in their own windows
+            newFiles = payload.get("newFiles", [])
+            if newFiles:
+                try:
+                    ctx     = uno.getComponentContext()
+                    desktop = ctx.ServiceManager.createInstance("com.sun.star.frame.Desktop")
+                    for path in newFiles:
+                        fileUrl = uno.systemPathToFileUrl(path)
+                        desktop.loadComponentFromURL(fileUrl, "_blank", 0, ())
+                except Exception as e:
+                    print(f"Error opening new document: {e}")
 
         except Exception as e:
             print(f"Error in LLMCompletionCallback.notify: {e}")

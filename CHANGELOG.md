@@ -1,4 +1,4 @@
-# Release V1.1.1
+# Release V1.1.2
 
-### Bugfixes
-* Fixed Codex CLI on Linux bug
+### Features
+* LibreAssist can now open new files

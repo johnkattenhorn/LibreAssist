@@ -17,6 +17,9 @@ from . import discovery, provider_base, settings, backup
 
 DEFAULT_PROVIDER = "claude_code"
 
+# Extensions treated as ODF documents when detecting newly created files
+_ODF_EXTS = (".odt", ".ods", ".odp", ".odg")
+
 
 def _buildProviderRegistry():
     """Build provider dicts from user provider config."""
@@ -126,8 +129,14 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
 
     modTimeBefore = os.stat(fullPath).st_mtime
 
-    frame = doc.getCurrentController().getFrame()
+    # Snapshot the working directory to detect newly created documents
+    dirBefore = set(os.listdir(directory))
 
+    frame = doc.getCurrentController().getFrame()
+    frameName = frame.getName()
+    if not frameName:
+        frameName = f"la_{id(frame)}"
+        frame.setName(frameName)
     settingsData = settings.loadSettingsForDir(docDir, fullPath)
     sessionId = settingsData.get("session_ids", {}).get(providerModule.NAME)
     timeout   = settingsData.get("timeout", 600)
@@ -142,6 +151,8 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
         "IMPORTANT: Write your response directly into the document by editing the file, "
         "UNLESS the user is asking a pure information question (like 'what day is it?' or 'what's in the document?'). "
         "For content creation, editing, or writing tasks, always modify the document directly. "
+        "If the user explicitly asks for a separate or new document, create a new "
+        "ODF file (e.g. .odt) in the current directory instead of editing this one. "
         "Response format: Plain text only, no Markdown."
     )
 
@@ -162,6 +173,7 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
         responseText   = None
         newSessionId   = None
         fileWasModified = False
+        newFiles       = []
 
         try:
             def _onProcess(proc):
@@ -180,6 +192,13 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
 
             modTimeAfter    = os.stat(fullPath).st_mtime
             fileWasModified = (modTimeAfter != modTimeBefore)
+
+            dirAfter = set(os.listdir(directory))
+            newFiles = [
+                os.path.join(directory, f)
+                for f in (dirAfter - dirBefore)
+                if os.path.splitext(f)[1].lower() in _ODF_EXTS
+            ]
 
             if fileWasModified and hasattr(providerModule, 'postProcess'):
                 providerModule.postProcess(fullPath)
@@ -209,7 +228,6 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
                     lines    = stderr.split('\n')
                     filtered = '\n'.join(lines[:10] + ['... (truncated) ...'] + lines[-10:]) if len(lines) > 30 else stderr
                     responseText = t('error_provider', error=filtered)
-                responseText = t('error_provider', error=filtered)
         except Exception as e:
             import traceback
             traceback.print_exc()
@@ -222,13 +240,34 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
         settingsData2["session_ids"]     = session_ids
         settings.saveSettingsForDir(docDir, settingsData2, fullPath)
 
-        # Save changed-state file and update undo/redo flags
-        if fileWasModified and docDir:
+        # Save changed-state / created-files and update undo/redo flags
+        if newFiles and docDir:
+            # A new document was created - store copies for redo, record paths
+            for path in newFiles:
+                copyPath = os.path.join(docDir, "created_" + os.path.basename(path))
+                shutil.copy2(path, copyPath)
+            settingsData3 = settings.loadSettingsForDir(docDir, fullPath)
+            settingsData3["last_action"]    = "create"
+            settingsData3["created_files"]  = newFiles
+            settingsData3["undo_available"] = True
+            settingsData3["redo_available"] = False
+            settings.saveSettingsForDir(docDir, settingsData3, fullPath)
+        elif fileWasModified and docDir:
             changedPath = os.path.join(docDir, "changed" + os.path.splitext(filename)[1])
             shutil.copy2(fullPath, changedPath)
             backup._undo_state = "changed"
             settingsData3 = settings.loadSettingsForDir(docDir, fullPath)
+            settingsData3["last_action"]    = "edit"
             settingsData3["undo_available"] = True
+            settingsData3["redo_available"] = False
+            settings.saveSettingsForDir(docDir, settingsData3, fullPath)
+        elif docDir:
+            # Pure information response or error - no file change. The backup was
+            # already overwritten with the current state at call time, so there is
+            # nothing to undo; reset action state to neutral.
+            settingsData3 = settings.loadSettingsForDir(docDir, fullPath)
+            settingsData3["last_action"]    = "none"
+            settingsData3["undo_available"] = False
             settingsData3["redo_available"] = False
             settings.saveSettingsForDir(docDir, settingsData3, fullPath)
 
@@ -239,10 +278,11 @@ def callLLMAsync(providerModule, userPrompt, currentHistory, completionCallback,
         completionCallback.payload = {
             "response":        responseText,
             "fileWasModified": fileWasModified,
+            "newFiles":        newFiles,
+            "url":             url,
+            "frameName":       frameName,
+            "doc":             doc,
             "docDir":          docDir,
-            "frame":           frame,
-            "backupPath":      os.path.join(docDir, "backup" + os.path.splitext(filename)[1]),
-            "isWriter":        True,
         }
         asyncCb.addCallback(completionCallback, None)
 
