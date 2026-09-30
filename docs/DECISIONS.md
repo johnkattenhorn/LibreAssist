@@ -73,3 +73,16 @@ said why. Finding it took raw UNO. Hence `filters` (what each table's filter sho
 how many rows it hides, the sheet's unnamed range included), `clear_filters`, and
 `set_autofilter`. Filter buttons are drawn only on screen: `render` cannot show them,
 so `filters` is also how to check they are there.
+
+## 2026-09-30: the sidebar chat is parked, with a direction and no approved design
+
+John asked for the chat panel, then parked it as issues before a design was agreed. What
+was proposed and not yet accepted: a new Calc-only panel beside upstream's, leaving the
+Writer panel untouched, because upstream's panel code is large, untested and tied to
+editing the file and reloading it. The feature list in the issues comes from a chat
+panel John built in another editor: one conversation per document that resumes the
+model's session, a streamed answer, a one-line activity display, stop, and context
+attached without asking. The chat would be given calc-tools and nothing else, where
+upstream's panel runs the model with every permission. Two things are unknown and have
+their own issues: whether an extension can make a running LibreOffice reachable, and
+whether a sidebar control can show streamed text without freezing the window.

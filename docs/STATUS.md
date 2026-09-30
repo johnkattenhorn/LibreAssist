@@ -30,13 +30,13 @@ system's `uno` module: create it with
 
 ## What is open
 
+- Issues: `gh issue list --state open`
 - Branches not merged: `git branch --no-merged main`
-- The root README, which is upstream's, does not mention `calc-tools`.
-- Upstream's reload after an edit reads payload keys nothing sets
-  (`src/pythonpath/libreassist/ui/events.py`, `frame`, `isWriter`, `backupPath`). Read,
-  not run.
 
 ## What is next
 
-Use the tools on real work and let what is missing decide the next tool. A sidebar chat that uses the same tools comes after that, and is the only part that
-needs the extension.
+Nothing is in flight. The sidebar chat is parked as issues: the panel itself, its
+history, reaching a LibreOffice started the ordinary way, and a spike on whether a
+sidebar control can show a streamed answer. The spike and the reachability issue come
+first; the panel's design waits on both. Until then, use the tools on real work and let
+what is missing decide the next tool.
