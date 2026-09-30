@@ -1,0 +1,53 @@
+[project]
+name = "calc-tools"
+version = "0.1.0"
+description = "MCP tools for the spreadsheet open in LibreOffice Calc: read, write, check and look."
+requires-python = ">=3.14"
+dependencies = ["mcp>=2.2,<3"]
+
+[project.scripts]
+calc-tools = "calc_tools.server:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1,<10",
+    "pytest-socket>=0.8.1,<0.9",
+    "ruff>=0.16.8,<0.17",
+    "pyright[nodejs]==1.1.414",
+]
+
+[build-system]
+requires = ["hatchling>=1.32,<2"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/calc_tools"]
+
+[tool.uv]
+exclude-newer = "7 days"
+
+[tool.pytest]
+strict = true
+testpaths = ["tests"]
+addopts = ["-m", "not integration", "--disable-socket", "--allow-unix-socket"]
+markers = ["integration: starts a headless LibreOffice"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+select = ["F", "E9", "B", "W291", "BLE001", "RUF100", "RUF006", "G", "DTZ", "PLR0915", "S113", "TID251"]
+
+[tool.ruff.lint.per-file-ignores]
+"src/calc_tools/server.py" = ["TID251"]  # the entry point is where the environment is read
+
+[tool.ruff.lint.flake8-tidy-imports.banned-api]
+"os.environ".msg = "Read the environment only in calc_tools.server."
+
+[tool.pyright]
+pythonVersion = "3.14"
+include = ["src", "tests"]
+venvPath = "."
+venv = ".venv"
+reportMatchNotExhaustive = "error"
+reportUnnecessaryTypeIgnoreComment = "error"

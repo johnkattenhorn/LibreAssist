@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# Run the calc-tools MCP server (stdio) in this checkout's locked environment.
+#   calc-tools        CALC_TOOLS_PIPE names the pipe LibreOffice accepts on (default calc-tools)
+# Exists so an MCP client is given one command, not the uv invocation. Works through a
+# symlink. Safe to re-run; uv fails rather than re-locks when uv.lock is stale.
+set -Eeuo pipefail
+shopt -s inherit_errexit
+trap 'printf "%s: line %d: %s exited %d\n" "${0##*/}" "$LINENO" "$BASH_COMMAND" "$?" >&2' ERR
+
+self=$(readlink -f -- "${BASH_SOURCE[0]}")
+project=$(cd -- "${self%/*}/.." && pwd)
+
+exec uv run --locked --project "$project" calc-tools "$@"
