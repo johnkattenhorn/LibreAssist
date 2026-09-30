@@ -32,7 +32,7 @@ def _prop(name: str, value: Any) -> Any:
     return p
 
 
-def _sheet(document: Any, name: str) -> Any:
+def sheet_named(document: Any, name: str) -> Any:
     sheets = document.Sheets
     if not sheets.hasByName(name):
         raise CalcError(
@@ -41,10 +41,10 @@ def _sheet(document: Any, name: str) -> Any:
     return sheets.getByName(name)
 
 
-def _range(document: Any, sheet: str, cells: str) -> Any:
+def range_named(document: Any, sheet: str, cells: str) -> Any:
     illegal = uno.getClass("com.sun.star.uno.RuntimeException")
     try:
-        return _sheet(document, sheet).getCellRangeByName(cells)
+        return sheet_named(document, sheet).getCellRangeByName(cells)
     except illegal:
         raise CalcError(Kind.INVALID, f"not a range on {sheet}: {cells!r}") from None
 
@@ -84,7 +84,7 @@ def describe(document: Any) -> dict[str, object]:
 
 def read(document: Any, sheet: str, cells: str) -> dict[str, object]:
     """A range as displayed, with the formulas and errors behind it."""
-    rng = _range(document, sheet, cells)
+    rng = range_named(document, sheet, cells)
     at = rng.RangeAddress
     height, width = at.EndRow - at.StartRow + 1, at.EndColumn - at.StartColumn + 1
     if height * width > MAX_CELLS:
@@ -115,8 +115,8 @@ def write(
     if not rows or not rows[0] or any(len(row) != len(rows[0]) for row in rows):
         raise CalcError(Kind.INVALID, "rows must be a rectangle with at least one cell")
     kinds = [[classify(value) for value in row] for row in rows]  # refuses before any write
-    anchor = _range(document, sheet, top_left).RangeAddress
-    target = _sheet(document, sheet).getCellRangeByPosition(
+    anchor = range_named(document, sheet, top_left).RangeAddress
+    target = sheet_named(document, sheet).getCellRangeByPosition(
         anchor.StartColumn,
         anchor.StartRow,
         anchor.StartColumn + len(rows[0]) - 1,
@@ -149,53 +149,11 @@ def formula_errors(document: Any, sheet: str | None) -> dict[str, object]:
     by_sheet: dict[str, dict[str, str]] = {}
     total = 0
     for name in names:
-        found, count = _errors_in(_sheet(document, name))
+        found, count = _errors_in(sheet_named(document, name))
         total += count
         if found:
             by_sheet[name] = found
     return {"count": total, "errors": by_sheet}
-
-
-def _address(document: Any, address: Any) -> str:
-    sheet = document.Sheets.getByIndex(address.Sheet).Name
-    top = cell_name(address.StartRow, address.StartColumn)
-    return f"{sheet}.{top}:{cell_name(address.EndRow, address.EndColumn)}"
-
-
-def charts(document: Any, sheet: str) -> list[dict[str, object]]:
-    """Each chart on a sheet: the range it was given and how LibreOffice read it."""
-    described: list[dict[str, object]] = []
-    embedded = _sheet(document, sheet).Charts
-    for name in embedded.ElementNames:
-        chart = embedded.getByName(name)
-        system = chart.EmbeddedObject.getFirstDiagram().getCoordinateSystems()[0]
-        categories = system.getAxisByDimension(0, 0).ScaleData.Categories
-        drawn = [
-            {
-                "type": str(kind.ChartType).rpartition(".")[2],
-                "series": [
-                    {
-                        "label": str(seq.Label.SourceRangeRepresentation) if seq.Label else "",
-                        "values": str(seq.Values.SourceRangeRepresentation),
-                    }
-                    for one in kind.getDataSeries()
-                    for seq in one.getDataSequences()
-                ],
-            }
-            for kind in system.getChartTypes()
-        ]
-        described.append(
-            {
-                "name": str(name),
-                "title": str(chart.EmbeddedObject.Title.String),
-                "ranges": [_address(document, a) for a in chart.getRanges()],
-                "categories": str(categories.Values.SourceRangeRepresentation)
-                if categories
-                else "",
-                "drawn": drawn,
-            }
-        )
-    return described
 
 
 def render(
@@ -208,7 +166,7 @@ def render(
     """
     if shutil.which(pdftoppm) is None:
         raise CalcError(Kind.NOT_FOUND, f"{pdftoppm} not found on PATH: install poppler")
-    target = _range(document, sheet, cells) if cells else _sheet(document, sheet)
+    target = range_named(document, sheet, cells) if cells else sheet_named(document, sheet)
     with tempfile.TemporaryDirectory(prefix="calc-tools-") as scratch:
         pdf = Path(scratch) / "range.pdf"
         selection = uno.Any("[]com.sun.star.beans.PropertyValue", (_prop("Selection", target),))

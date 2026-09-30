@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from calc_tools import office, sheets
+from calc_tools import charts, office, sheets
 from calc_tools.errors import CalcError, Kind
 from calc_tools.server import Settings, build
 
@@ -87,7 +87,7 @@ def test_every_formula_error_is_listed_with_its_meaning(book: Any) -> None:
 
 
 def test_a_chart_is_described_by_how_libreoffice_read_its_range(book: Any) -> None:
-    (chart,) = sheets.charts(book, "Data")
+    (chart,) = charts.charts(book, "Data")
     assert chart["name"] == "Spend"
     assert chart["ranges"] == ["Data.A1:B3"]
     assert chart["categories"] == "$Data.$A$2:$A$3"

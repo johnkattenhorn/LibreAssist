@@ -14,6 +14,7 @@ from pathlib import Path
 from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
+from calc_tools import charts as chart_tools
 from calc_tools import office, sheets
 from calc_tools.errors import CalcError
 
@@ -110,7 +111,7 @@ def build(settings: Settings) -> MCPServer:
     def charts(sheet: str, document: str | None = None) -> list[dict[str, object]]:
         """The charts on a sheet: the range each was given and how LibreOffice read it
         (which rows became categories, which became series, of what type)."""
-        return sheets.charts(found(document), sheet)
+        return chart_tools.charts(found(document), sheet)
 
     @server.tool()
     @_reported
