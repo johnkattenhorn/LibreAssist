@@ -58,6 +58,9 @@ Set `CALC_TOOLS_PIPE` to use a different pipe name.
 | `read_range` | Returns a range as displayed, with the formula behind each formula cell and the meaning of each error |
 | `write_range` | Writes a block of cells as one undo step. Numbers stay numbers, text stays text, `=` starts a formula, `YYYY-MM-DD` becomes a date |
 | `undo` | Undoes the last step, but only if it is the write or chart change you name |
+| `set_autofilter` | Puts filter buttons on a table's header row |
+| `filters` | Lists a sheet's tables with what each filter shows and how many rows it hides |
+| `clear_filters` | Drops a sheet's filter criteria and shows every row, as one undo step |
 | `named_ranges` | Lists named ranges, with the displayed value of each single named cell |
 | `formula_errors` | Lists every formula error with its formula, code and what the code means |
 | `charts` | Describes each chart: its range, and which rows LibreOffice read as labels and which as series |

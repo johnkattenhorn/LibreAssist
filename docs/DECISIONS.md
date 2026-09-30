@@ -62,3 +62,14 @@ showing 46295. So `write_range` stores the day number, counted from the document
 day zero, and applies the locale's standard date format unless the cell already has a
 date format. The price: text that is exactly a valid YYYY-MM-DD date cannot be written
 as text.
+
+## 2026-09-30: filters are a thing the tools must see, learned on first real use
+
+The first real job was filter buttons on a table of 2,500 rows. The person already
+saw "filtered" rows and no header: a Standard Filter set before an import was still
+hiding 2,297 rows by position and showing 205 that no longer matched. `read_range`
+showed every row, hidden or not, and `render` drew a nearly blank page, so neither
+said why. Finding it took raw UNO. Hence `filters` (what each table's filter shows and
+how many rows it hides, the sheet's unnamed range included), `clear_filters`, and
+`set_autofilter`. Filter buttons are drawn only on screen: `render` cannot show them,
+so `filters` is also how to check they are there.

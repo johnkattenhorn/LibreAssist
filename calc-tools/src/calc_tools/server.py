@@ -16,7 +16,7 @@ from mcp.server.mcpserver.exceptions import ToolError
 
 from calc_tools import charts as chart_tools
 from calc_tools.charts import ChartKind, NewChart, Source
-from calc_tools import office, sheets
+from calc_tools import office, sheets, tables
 from calc_tools.errors import CalcError
 
 INSTRUCTIONS = (
@@ -155,6 +155,31 @@ def build(settings: Settings) -> MCPServer:
             series_in_rows=series_in_rows,
         )
         return chart_tools.create(found(document), sheet, new)
+
+    @server.tool()
+    @_reported
+    def set_autofilter(
+        sheet: str, cells: str, name: str | None = None, document: str | None = None
+    ) -> dict[str, str]:
+        """Put filter buttons on a table: `cells` is the whole table and its first row is
+        the header. The person then filters and sorts with the buttons. `name` names the
+        table (default `<sheet>Table`); an existing name is moved, not duplicated."""
+        return tables.set_autofilter(found(document), sheet, cells, name=name or f"{sheet}Table")
+
+    @server.tool()
+    @_reported
+    def filters(sheet: str, document: str | None = None) -> list[dict[str, object]]:
+        """The tables on a sheet and their filters: range, filter buttons, what each
+        filter shows and how many rows it hides. Look here when rows seem to be missing:
+        a filter set before the rows changed still hides by position."""
+        return tables.filters(found(document), sheet)
+
+    @server.tool()
+    @_reported
+    def clear_filters(sheet: str, document: str | None = None) -> dict[str, object]:
+        """Drop every filter criterion on a sheet and show all its rows, as one undo step.
+        Filter buttons stay."""
+        return tables.clear_filters(found(document), sheet)
 
     @server.tool()
     @_reported

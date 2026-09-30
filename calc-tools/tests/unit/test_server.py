@@ -17,13 +17,16 @@ def test_the_server_offers_every_tool() -> None:
     names = sorted(tool.name for tool in asyncio.run(server.list_tools()))
     assert names == [
         "charts",
+        "clear_filters",
         "create_chart",
         "documents",
+        "filters",
         "formula_errors",
         "named_ranges",
         "open_document",
         "read_range",
         "render",
+        "set_autofilter",
         "set_chart_range",
         "undo",
         "write_range",

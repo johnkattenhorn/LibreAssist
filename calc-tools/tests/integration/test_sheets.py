@@ -4,9 +4,11 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+import uno  # pyright: ignore[reportMissingImports] - pyuno ships with LibreOffice, not PyPI
+
 import pytest
 
-from calc_tools import charts, office, sheets
+from calc_tools import charts, office, sheets, tables
 from calc_tools.charts import ChartKind, NewChart, Source
 from calc_tools.errors import CalcError, Kind
 from calc_tools.server import Settings, build
@@ -150,6 +152,72 @@ def test_a_date_is_written_as_a_date_the_sheet_can_calculate_with(book: Any) -> 
     assert data.getCellByPosition(7, 0).getValue() == 46296
     shown = str(data.getCellByPosition(6, 0).String)
     assert shown != "46295" and "30" in shown  # formatted as a date, not the bare number
+
+
+def test_a_table_is_given_filter_buttons_and_the_same_name_moves_them(book: Any) -> None:
+    done = tables.set_autofilter(book, "Data", "A1:C3", name="DataTable")
+    assert done == {
+        "range": "$Data.$A$1:$C$3",
+        "name": "DataTable",
+        "undo_step": "Filter buttons: Data",
+    }
+    table = book.DatabaseRanges.getByName("DataTable")
+    assert table.AutoFilter is True
+    area = table.DataArea
+    assert (area.StartRow, area.StartColumn, area.EndRow, area.EndColumn) == (0, 0, 2, 2)
+    tables.set_autofilter(book, "Data", "A1:C9", name="DataTable")
+    assert book.DatabaseRanges.getByName("DataTable").DataArea.EndRow == 8
+    assert list(book.DatabaseRanges.ElementNames).count("DataTable") == 1
+    with pytest.raises(CalcError) as bad:
+        tables.set_autofilter(book, "Data", "nowhere", name="X")
+    assert bad.value.kind is Kind.INVALID
+    sheets.undo(book, "Filter buttons: Data")
+    assert book.DatabaseRanges.getByName("DataTable").DataArea.EndRow == 2  # the first table
+
+
+def _only(column: int, text: str) -> tuple[Any, ...]:
+    field = uno.createUnoStruct("com.sun.star.sheet.TableFilterField")
+    field.Field, field.IsNumeric, field.StringValue = column, False, text
+    field.Operator = uno.Enum("com.sun.star.sheet.FilterOperator", "EQUAL")
+    return (field,)
+
+
+def test_filters_are_reported_with_what_they_show_and_how_much_they_hide(book: Any) -> None:
+    assert tables.filters(book, "Data") == []
+    tables.set_autofilter(book, "Data", "A1:C3", name="DataTable")
+    table = book.DatabaseRanges.getByName("DataTable")
+    table.getFilterDescriptor().setFilterFields(_only(0, "Tea"))
+    table.refresh()
+    assert tables.filters(book, "Data") == [
+        {
+            "name": "DataTable",
+            "range": "$Data.$A$1:$C$3",
+            "buttons": True,
+            "shows": ["A = Tea"],
+            "hidden_rows": 1,
+        }
+    ]
+
+
+def test_clearing_filters_shows_every_row_and_keeps_the_buttons(book: Any) -> None:
+    tables.set_autofilter(book, "Data", "A1:C3", name="DataTable")
+    table = book.DatabaseRanges.getByName("DataTable")
+    table.getFilterDescriptor().setFilterFields(_only(0, "Tea"))
+    table.refresh()
+    notes = book.Sheets.getByName("Notes")
+    notes.getCellByPosition(0, 1).setString("hidden by a standard filter")
+    loose = notes.getCellRangeByName("A1:A2")
+    standard = loose.createFilterDescriptor(True)
+    standard.setFilterFields(_only(0, "nothing matches"))
+    loose.filter(standard)
+    assert [f["hidden_rows"] for f in tables.filters(book, "Notes")] == [2]
+    assert tables.clear_filters(book, "Data") == {"cleared": 1, "undo_step": "Show every row: Data"}
+    assert tables.clear_filters(book, "Notes")["cleared"] == 1
+    (still,) = tables.filters(book, "Data")
+    assert (still["buttons"], still["shows"], still["hidden_rows"]) == (True, [], 0)
+    assert all(f["hidden_rows"] == 0 and f["shows"] == [] for f in tables.filters(book, "Notes"))
+    assert book.Sheets.getByName("Data").Rows.getByIndex(2).IsVisible is True
+    assert tables.clear_filters(book, "Data")["cleared"] == 0
 
 
 def test_names_are_listed_with_what_a_single_cell_shows(book: Any) -> None:
