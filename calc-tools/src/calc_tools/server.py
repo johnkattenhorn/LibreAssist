@@ -15,6 +15,7 @@ from mcp.server.mcpserver import Image, MCPServer
 from mcp.server.mcpserver.exceptions import ToolError
 
 from calc_tools import charts as chart_tools
+from calc_tools.charts import ChartKind, NewChart, Source
 from calc_tools import office, sheets
 from calc_tools.errors import CalcError
 
@@ -96,7 +97,7 @@ def build(settings: Settings) -> MCPServer:
     ) -> dict[str, object]:
         """Write a block of cells starting at `top_left`, as one undo step named `label`.
         A number is written as a number, text as text, text starting with = as a formula,
-        null clears. Returns the range written and any formula errors now in it."""
+        YYYY-MM-DD as a date, null clears. Returns the range written and any formula errors now in it."""
         return sheets.write(found(document), sheet, top_left, rows, label=label)
 
     @server.tool()
@@ -112,6 +113,64 @@ def build(settings: Settings) -> MCPServer:
         """The charts on a sheet: the range each was given and how LibreOffice read it
         (which rows became categories, which became series, of what type)."""
         return chart_tools.charts(found(document), sheet)
+
+    @server.tool()
+    @_reported
+    def set_chart_range(
+        sheet: str,
+        chart: str,
+        cells: str,
+        data_sheet: str | None = None,
+        document: str | None = None,
+    ) -> dict[str, object]:
+        """Point a chart at another range (first row and first column are labels) and see
+        how LibreOffice read it. `data_sheet` is where the range is when it is not the
+        chart's own sheet. It is one undo step; the result names it."""
+        source = Source(data_sheet or sheet, cells)
+        return chart_tools.set_range(found(document), sheet, chart, source)
+
+    @server.tool()
+    @_reported
+    def create_chart(
+        sheet: str,
+        name: str,
+        kind: ChartKind,
+        cells: str,
+        at: str,
+        title: str = "",
+        data_sheet: str | None = None,
+        series_in_rows: bool = False,
+        document: str | None = None,
+    ) -> dict[str, object]:
+        """Add a chart to `sheet` with its top-left corner on the cell `at`, drawing `cells`
+        (first row and first column are labels). Returns how LibreOffice read the range
+        and the name of its undo step; check the reading, then render the sheet to look."""
+        new = NewChart(
+            name=name,
+            kind=kind,
+            cells=cells,
+            at=at,
+            title=title,
+            data_sheet=data_sheet,
+            series_in_rows=series_in_rows,
+        )
+        return chart_tools.create(found(document), sheet, new)
+
+    @server.tool()
+    @_reported
+    def named_ranges(
+        contains: str | None = None, document: str | None = None
+    ) -> list[dict[str, str]]:
+        """The named ranges, with what each single named cell shows. `contains` keeps only
+        names holding that text."""
+        return sheets.named_ranges(found(document), contains)
+
+    @server.tool()
+    @_reported
+    def undo(label: str, document: str | None = None) -> dict[str, str]:
+        """Undo the last step if it is the one with this label (the undo_step a write or a
+        chart tool returned). Refuses when the person has done something since."""
+        return sheets.undo(found(document), label)
 
     @server.tool()
     @_reported

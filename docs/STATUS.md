@@ -4,9 +4,9 @@
 
 A fork of NikolaiRadke/LibreAssist. The upstream extension (`src/`, the `.oxt`) is
 unchanged. The fork adds `calc-tools/`: an MCP server that gives an agent outside
-LibreOffice seven tools on the spreadsheet a person has open in Calc, over a named
-pipe: `documents`, `open_document`, `read_range`, `write_range`, `formula_errors`,
-`charts` and `render`.
+LibreOffice tools on the spreadsheet a person has open in Calc, over a named pipe. The
+tools and how to install are in `calc-tools/README.md`; the list the server really
+offers is `tests/unit/test_server.py`.
 
 Run it with `calc-tools/bin/calc-tools` (stdio). `CALC_TOOLS_PIPE` names the pipe
 LibreOffice accepts on, default `calc-tools`. With Claude Code:
@@ -31,14 +31,12 @@ system's `uno` module: create it with
 ## What is open
 
 - Branches not merged: `git branch --no-merged main`
-- The README says nothing about `calc-tools` yet.
+- The root README, which is upstream's, does not mention `calc-tools`.
 - Upstream's reload after an edit reads payload keys nothing sets
   (`src/pythonpath/libreassist/ui/events.py`, `frame`, `isWriter`, `backupPath`). Read,
   not run.
 
 ## What is next
 
-Use the tools on real work and let what is missing decide the next tool. Candidates
-seen so far: named ranges, chart creation and retargeting, a write of dates as dates.
-A sidebar chat that uses the same tools comes after that, and is the only part that
+Use the tools on real work and let what is missing decide the next tool. A sidebar chat that uses the same tools comes after that, and is the only part that
 needs the extension.

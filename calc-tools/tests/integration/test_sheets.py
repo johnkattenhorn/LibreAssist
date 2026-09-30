@@ -7,6 +7,7 @@ from typing import Any
 import pytest
 
 from calc_tools import charts, office, sheets
+from calc_tools.charts import ChartKind, NewChart, Source
 from calc_tools.errors import CalcError, Kind
 from calc_tools.server import Settings, build
 
@@ -97,6 +98,77 @@ def test_a_chart_is_described_by_how_libreoffice_read_its_range(book: Any) -> No
             "series": [{"label": "$Data.$B$1", "values": "$Data.$B$2:$B$3"}],
         }
     ]
+    assert "undo_step" not in chart  # describing a chart changes nothing
+
+
+def test_a_chart_can_be_pointed_at_another_range_and_says_how_it_reads_it(book: Any) -> None:
+    chart = charts.set_range(book, "Data", "Spend", Source("Data", "A1:C3"))
+    assert chart["ranges"] == ["Data.A1:C3"]
+    assert chart["undo_step"] == "Chart range: Spend"
+    drawn = chart["drawn"]
+    assert isinstance(drawn, list) and [len(kind["series"]) for kind in drawn] == [2]
+    with pytest.raises(CalcError) as missing:
+        charts.set_range(book, "Data", "Nope", Source("Data", "A1:C3"))
+    assert missing.value.kind is Kind.NOT_FOUND and "Spend" in str(missing.value)
+    sheets.undo(book, "Chart range: Spend")
+    assert charts.charts(book, "Data")[0]["ranges"] == ["Data.A1:B3"]
+
+
+def test_a_chart_is_created_where_asked_of_the_kind_asked(book: Any) -> None:
+    new = NewChart(name="Doubled", kind=ChartKind.LINE, cells="A1:C3", at="E8", title="Both")
+    chart = charts.create(book, "Data", new)
+    assert chart["name"] == "Doubled" and chart["title"] == "Both"
+    assert chart["undo_step"] == "Add chart: Doubled"
+    assert chart["ranges"] == ["Data.A1:C3"]
+    assert chart["drawn"] == [
+        {
+            "type": "LineChartType",
+            "series": [
+                {"label": "$Data.$B$1", "values": "$Data.$B$2:$B$3"},
+                {"label": "$Data.$C$1", "values": "$Data.$C$2:$C$3"},
+            ],
+        }
+    ]
+    assert [c["name"] for c in charts.charts(book, "Data")] == ["Spend", "Doubled"]
+    stacked = NewChart(
+        name="ByRow", kind=ChartKind.STACKED_COLUMN, cells="A1:C3", at="E30", series_in_rows=True
+    )
+    by_row = charts.create(book, "Data", stacked)["drawn"]
+    assert isinstance(by_row, list) and by_row[0]["type"] == "ColumnChartType"
+    assert [s["label"] for s in by_row[0]["series"]] == ["$Data.$A$2", "$Data.$A$3"]
+    with pytest.raises(CalcError) as taken:
+        charts.create(book, "Data", new)
+    assert taken.value.kind is Kind.INVALID
+    sheets.undo(book, "Add chart: ByRow")
+    assert [c["name"] for c in charts.charts(book, "Data")] == ["Spend", "Doubled"]
+
+
+def test_a_date_is_written_as_a_date_the_sheet_can_calculate_with(book: Any) -> None:
+    sheets.write(book, "Data", "G1", [["2026-09-30", "=G1+1"]], label="Dates")
+    data = book.Sheets.getByName("Data")
+    assert data.getCellByPosition(6, 0).getValue() == 46295  # days since 30 Dec 1899
+    assert data.getCellByPosition(7, 0).getValue() == 46296
+    shown = str(data.getCellByPosition(6, 0).String)
+    assert shown != "46295" and "30" in shown  # formatted as a date, not the bare number
+
+
+def test_names_are_listed_with_what_a_single_cell_shows(book: Any) -> None:
+    assert sheets.named_ranges(book, None) == [
+        {"name": "Prices", "refers_to": "$Data.$B$2:$B$3", "shown": ""},
+        {"name": "Total", "refers_to": "$Data.$C$2", "shown": "3"},
+    ]
+    assert [n["name"] for n in sheets.named_ranges(book, "tot")] == ["Total"]
+
+
+def test_only_the_step_named_is_undone(book: Any) -> None:
+    sheets.write(book, "Data", "A4", [["Milk"]], label="Add milk")
+    data = book.Sheets.getByName("Data")
+    with pytest.raises(CalcError) as other:
+        sheets.undo(book, "Something else")
+    assert other.value.kind is Kind.INVALID and "Add milk" in str(other.value)
+    assert data.getCellByPosition(0, 3).String == "Milk"
+    assert sheets.undo(book, "Add milk") == {"undone": "Add milk"}
+    assert data.getCellByPosition(0, 3).String == ""
 
 
 def test_a_range_is_rendered_to_png_without_touching_the_document(book: Any) -> None:

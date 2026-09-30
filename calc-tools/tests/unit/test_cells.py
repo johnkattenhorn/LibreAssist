@@ -20,6 +20,9 @@ def test_a_written_value_keeps_its_type() -> None:
     assert classify("=SUM(A1:A3)") is Write.FORMULA
     assert classify("007") is Write.TEXT  # digits sent as text stay text
     assert classify("") is Write.CLEAR
+    assert classify("2026-09-30") is Write.DATE
+    assert classify("2026-13-40") is Write.TEXT  # shaped like a date, but no such day
+    assert classify("2026-09-30 paid") is Write.TEXT
 
 
 @pytest.mark.parametrize("value", [True, [1], {"a": 1}])

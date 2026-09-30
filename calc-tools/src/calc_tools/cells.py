@@ -2,6 +2,7 @@
 
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import date
 from enum import StrEnum
 
 from calc_tools.errors import CalcError, Kind
@@ -21,11 +22,24 @@ class Write(StrEnum):
     CLEAR = "clear"
     NUMBER = "number"
     FORMULA = "formula"
+    DATE = "date"
     TEXT = "text"
 
 
+def _is_date(text: str) -> bool:
+    """Exactly YYYY-MM-DD, and a day that exists."""
+    if len(text) != 10 or text[4] != "-" or text[7] != "-":
+        return False
+    try:
+        date.fromisoformat(text)
+    except ValueError:
+        return False
+    return True
+
+
 def classify(value: object) -> Write:
-    """What a value becomes when written: a number stays a number and text stays text."""
+    """What a value becomes when written: a number stays a number, text stays text, and
+    a date written YYYY-MM-DD becomes a date."""
     match value:
         case None | "":
             return Write.CLEAR
@@ -37,6 +51,8 @@ def classify(value: object) -> Write:
             return Write.NUMBER
         case str() if value.startswith("="):
             return Write.FORMULA
+        case str() if _is_date(value):
+            return Write.DATE
         case str():
             return Write.TEXT
         case _:

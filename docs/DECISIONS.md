@@ -44,3 +44,21 @@ and `pdftoppm` makes the pages. The price is poppler as a second program on PATH
 
 A write is one undo step in the open document and stays unsaved. Saving and closing are
 the person's: an agent that saves can make an edit the person has not seen permanent.
+
+## 2026-09-30: a chart change is a named undo step
+
+Measured on LibreOffice 26.8: adding a chart through the API records an undo step with
+an empty title, and changing a chart's range records one titled "Modify chart data
+range". Both undo cleanly. The tools wrap each in a step with their own label and
+return it, so `undo` can name exactly that step and refuse anything the person did
+after it. This corrects what the first version of these tools and their README said,
+that chart changes could not be undone; that claim was carried over from another
+project's notes and had never been tested here.
+
+## 2026-09-30: a date is written as a day number and given a date format
+
+Passing `2026-09-30` to a cell as typed input stores the right day but leaves the cell
+showing 46295. So `write_range` stores the day number, counted from the document's own
+day zero, and applies the locale's standard date format unless the cell already has a
+date format. The price: text that is exactly a valid YYYY-MM-DD date cannot be written
+as text.

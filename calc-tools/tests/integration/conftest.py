@@ -69,7 +69,8 @@ def _hidden() -> tuple[Any, ...]:
 
 @pytest.fixture
 def book(running: Running) -> Iterator[Any]:
-    """Two sheets: Data with a formula, two errors and a chart; Notes with one cell."""
+    """Two sheets: Data with a formula, two errors, a chart and two names; Notes with one
+    cell."""
     document = running.desktop.loadComponentFromURL("private:factory/scalc", "_blank", 0, _hidden())
     try:
         data = document.Sheets.getByIndex(0)
@@ -88,6 +89,9 @@ def book(running: Running) -> Iterator[Any]:
         frame.X, frame.Y, frame.Width, frame.Height = 500, 3000, 9000, 6000
         source = data.getCellRangeByName("A1:B3").RangeAddress
         data.Charts.addNewByName("Spend", frame, (source,), True, True)
+        corner = uno.createUnoStruct("com.sun.star.table.CellAddress")
+        document.NamedRanges.addNewByName("Total", "$Data.$C$2", corner, 0)
+        document.NamedRanges.addNewByName("Prices", "$Data.$B$2:$B$3", corner, 0)
         document.setModified(False)
         yield document
     finally:

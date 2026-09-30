@@ -8,7 +8,9 @@ the active sheet or the modified state except a write.
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +21,7 @@ from calc_tools.errors import CalcError, Kind, meaning
 from calc_tools.office import path_of
 
 FORMULA_ERROR = 4  # com.sun.star.sheet.FormulaResult.ERROR
+NUMBER_FORMAT_DATE = 2  # com.sun.star.util.NumberFormat.DATE
 MAX_CELLS = 5000
 MAX_ERRORS = 200
 RENDER_DPI = 90
@@ -49,6 +52,17 @@ def range_named(document: Any, sheet: str, cells: str) -> Any:
         raise CalcError(Kind.INVALID, f"not a range on {sheet}: {cells!r}") from None
 
 
+@contextmanager
+def undo_step(document: Any, label: str) -> Iterator[None]:
+    """Group every edit inside into one step, named `label`, that one Ctrl+Z reverses."""
+    manager = document.UndoManager
+    manager.enterUndoContext(label)
+    try:
+        yield
+    finally:
+        manager.leaveUndoContext()
+
+
 def _error_text(cell: Any) -> str:
     code = int(cell.getError())
     return f"{cell.String}: {meaning(code)}"
@@ -66,6 +80,17 @@ def _errors_in(cells: Any) -> tuple[dict[str, str], int]:
             at = cell.CellAddress
             found[cell_name(at.Row, at.Column)] = f"{_error_text(cell)} in {cell.Formula}"
     return found, total
+
+
+def _put_date(document: Any, cell: Any, day: date) -> None:
+    """Store a date as the day number Calc counts from the document's own day zero, and
+    give the cell a date format unless it has one: the number alone reads as 46295."""
+    zero = document.NullDate
+    cell.setValue(float((day - date(zero.Year, zero.Month, zero.Day)).days))
+    formats = document.NumberFormats
+    if not formats.getByKey(cell.NumberFormat).Type & NUMBER_FORMAT_DATE:
+        locale = uno.createUnoStruct("com.sun.star.lang.Locale")
+        cell.NumberFormat = formats.getStandardFormat(NUMBER_FORMAT_DATE, locale)
 
 
 def describe(document: Any) -> dict[str, object]:
@@ -122,9 +147,7 @@ def write(
         anchor.StartColumn + len(rows[0]) - 1,
         anchor.StartRow + len(rows) - 1,
     )
-    undo = document.UndoManager
-    undo.enterUndoContext(label)
-    try:
+    with undo_step(document, label):
         for r, row in enumerate(rows):
             for c, value in enumerate(row):
                 cell = target.getCellByPosition(c, r)
@@ -135,10 +158,10 @@ def write(
                         cell.setValue(float(value))  # pyright: ignore[reportArgumentType] - classify proved it a number
                     case Write.FORMULA:
                         cell.setFormula(value)
+                    case Write.DATE:
+                        _put_date(document, cell, date.fromisoformat(str(value)))
                     case Write.TEXT:
                         cell.setString(value)
-    finally:
-        undo.leaveUndoContext()
     errors, _ = _errors_in(target)
     return {"range": str(target.AbsoluteName), "undo_step": label, "errors": errors}
 
@@ -154,6 +177,36 @@ def formula_errors(document: Any, sheet: str | None) -> dict[str, object]:
         if found:
             by_sheet[name] = found
     return {"count": total, "errors": by_sheet}
+
+
+def named_ranges(document: Any, contains: str | None) -> list[dict[str, str]]:
+    """Every named range, by name, with what a single named cell shows."""
+    names = document.NamedRanges
+    wanted = (contains or "").casefold()
+    listed: list[dict[str, str]] = []
+    for name in sorted(names.ElementNames):
+        if wanted not in name.casefold():
+            continue
+        cells = names.getByName(name).ReferredCells
+        refers_to = shown = ""
+        if cells is not None:
+            refers_to = str(cells.AbsoluteName)
+            if cells.Rows.Count == 1 and cells.Columns.Count == 1:
+                shown = str(cells.getCellByPosition(0, 0).String)
+        listed.append({"name": str(name), "refers_to": refers_to, "shown": shown})
+    return listed
+
+
+def undo(document: Any, label: str) -> dict[str, str]:
+    """Undo the last step, but only if it is the one named: never the person's own edit."""
+    manager = document.UndoManager
+    if not manager.isUndoPossible():
+        raise CalcError(Kind.INVALID, "there is nothing to undo")
+    last = str(manager.getCurrentUndoActionTitle())
+    if last != label:
+        raise CalcError(Kind.INVALID, f"the last step is {last!r}, not {label!r}: nothing undone")
+    manager.undo()
+    return {"undone": label}
 
 
 def render(
