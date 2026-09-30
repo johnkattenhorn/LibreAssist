@@ -9,7 +9,7 @@ from calc_tools.server import Settings, build
 
 def test_settings_default_and_read_the_environment() -> None:
     assert Settings.load({}) == Settings(pipe="calc-tools", soffice="soffice", pdftoppm="pdftoppm")
-    assert Settings.load({"CALC_TOOLS_PIPE": "finances-live"}).pipe == "finances-live"
+    assert Settings.load({"CALC_TOOLS_PIPE": "another-pipe"}).pipe == "another-pipe"
 
 
 def test_the_server_offers_every_tool() -> None:
